@@ -20,7 +20,7 @@ function findIssue(project, id) {
 router.post('/issues/:project', (request, response) => {
   const { issue_title, issue_text, created_by } = request.body;
   if (!issue_title || !issue_text || !created_by) {
-    return response.status(400).json({ error: 'required field(s) missing' });
+    return response.json({ error: 'required field(s) missing' });
   }
 
   const now = new Date().toISOString();
@@ -50,15 +50,15 @@ router.get('/issues/:project', (request, response) => {
 
 router.put('/issues/:project', (request, response) => {
   const { _id, ...updates } = request.body;
-  if (!_id) return response.status(400).json({ error: 'missing _id' });
+  if (!_id) return response.json({ error: 'missing _id' });
 
   const updateFields = Object.keys(updates).filter((field) => field !== '_id');
   if (updateFields.length === 0) {
-    return response.status(400).json({ error: 'no update field(s) sent', _id });
+    return response.json({ error: 'no update field(s) sent', _id });
   }
 
   const issue = findIssue(request.params.project, _id);
-  if (!issue) return response.status(400).json({ error: 'could not update', _id });
+  if (!issue) return response.json({ error: 'could not update', _id });
 
   updateFields.forEach((field) => {
     if (field in issue && field !== 'created_on' && field !== '_id') issue[field] = updates[field];
@@ -69,11 +69,11 @@ router.put('/issues/:project', (request, response) => {
 
 router.delete('/issues/:project', (request, response) => {
   const { _id } = request.body;
-  if (!_id) return response.status(400).json({ error: 'missing _id' });
+  if (!_id) return response.json({ error: 'missing _id' });
 
   const project = projectIssues(request.params.project);
   const index = project.findIndex((issue) => issue._id === _id);
-  if (index === -1) return response.status(400).json({ error: 'could not delete', _id });
+  if (index === -1) return response.json({ error: 'could not delete', _id });
 
   project.splice(index, 1);
   return response.json({ result: 'successfully deleted', _id });

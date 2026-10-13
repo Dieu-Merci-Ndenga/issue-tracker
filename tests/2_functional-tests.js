@@ -31,6 +31,7 @@ describe('Issue Tracker API', function () {
 
   it('rejects an issue with missing required fields', async function () {
     const response = await request(app).post(`/api/issues/${project}`).send({ issue_title: 'Missing' });
+    assert.strictEqual(response.status, 200);
     assert.deepStrictEqual(response.body, { error: 'required field(s) missing' });
   });
 
@@ -73,17 +74,20 @@ describe('Issue Tracker API', function () {
 
   it('rejects an update with missing _id', async function () {
     const response = await request(app).put(`/api/issues/${project}`).send({ issue_title: 'Updated' });
+    assert.strictEqual(response.status, 200);
     assert.deepStrictEqual(response.body, { error: 'missing _id' });
   });
 
   it('rejects an update with no fields to update', async function () {
     await createIssueForMutation();
     const response = await request(app).put(`/api/issues/${project}`).send({ _id: issue._id });
+    assert.strictEqual(response.status, 200);
     assert.deepStrictEqual(response.body, { error: 'no update field(s) sent', _id: issue._id });
   });
 
   it('rejects an update with an invalid _id', async function () {
     const response = await request(app).put(`/api/issues/${project}`).send({ _id: 'invalid', issue_title: 'Updated' });
+    assert.strictEqual(response.status, 200);
     assert.deepStrictEqual(response.body, { error: 'could not update', _id: 'invalid' });
   });
 
@@ -96,11 +100,13 @@ describe('Issue Tracker API', function () {
   it('rejects a delete with an invalid _id', async function () {
     await createIssueForMutation();
     const response = await request(app).delete(`/api/issues/${project}`).send({ _id: 'invalid' });
+    assert.strictEqual(response.status, 200);
     assert.deepStrictEqual(response.body, { error: 'could not delete', _id: 'invalid' });
   });
 
   it('rejects a delete with missing _id', async function () {
     const response = await request(app).delete(`/api/issues/${project}`).send({});
+    assert.strictEqual(response.status, 200);
     assert.deepStrictEqual(response.body, { error: 'missing _id' });
   });
 });
