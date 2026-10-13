@@ -12,38 +12,40 @@ app.use(cors({ optionsSuccessStatus: 200 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// 2. Exécution interne de Mocha pour valider les tests fonctionnels auprès de freeCodeCamp
-let testResults = [];
+// 2. Exécution différée des tests pour éviter de lancer Mocha pendant le chargement de server.js
+let testResults;
+let testRun;
+
 function runMochaTests() {
-  const mocha = new Mocha({ ui: 'bdd', timeout: 5000 });
-  
-  // Pointe vers ton fichier de tests fonctionnels
-  mocha.addFile(path.join(__dirname, 'tests', '2_functional-tests.js'));
+  if (testRun) return testRun;
 
-  let results = [];
-  const mochaRunner = mocha.run(failures => {
-    console.log(`Functional tests completed with ${failures} failures.`);
+  testRun = new Promise((resolve) => {
+    const mocha = new Mocha({ ui: 'bdd', timeout: 5000 });
+    mocha.addFile(path.join(__dirname, 'tests', '2_functional-tests.js'));
+    const results = [];
+    const mochaRunner = mocha.run();
+
+    mochaRunner.on('test end', (test) => {
+      results.push({
+        title: test.title,
+        fullTitle: test.fullTitle(),
+        context: test.parent.title,
+        state: test.state,
+        assertions: []
+      });
+    });
+
+    mochaRunner.on('end', () => {
+      testResults = results;
+      resolve(results);
+    });
   });
 
-  mochaRunner.on('pass', test => {
-    results.push({ title: test.title, fullTitle: test.fullTitle(), state: 'passed' });
-  });
-
-  mochaRunner.on('fail', (test, err) => {
-    results.push({ title: test.title, fullTitle: test.fullTitle(), state: 'failed', err: err.message });
-  });
-
-  mochaRunner.on('end', () => {
-    testResults = results;
-  });
+  return testRun;
 }
 
-// Lancement des tests au démarrage du serveur
-runMochaTests();
-
-// 3. ROUTE OBLIGATOIRE pour valider le test 11 sur freeCodeCamp
-app.get('/_api/get-tests', (request, response) => {
-  response.json(testResults);
+app.get('/_api/get-tests', async (request, response) => {
+  response.json(testResults || await runMochaTests());
 });
 
 // 4. Fichiers statiques
