@@ -108,7 +108,7 @@ router.put('/issues/:project', async (request, response) => {
     const updatedIssue = await Issue.findOneAndUpdate(
       { _id, project: request.params.project },
       { $set: updateData },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!updatedIssue) {

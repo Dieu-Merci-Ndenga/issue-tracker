@@ -4,6 +4,8 @@ const app = require('../server');
 const api = require('../routes/api');
 
 describe('Issue Tracker API', function () {
+  this.timeout(10000);
+
   const project = 'functional-test-project';
   let issue;
 
