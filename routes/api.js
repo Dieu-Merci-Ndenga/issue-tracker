@@ -35,7 +35,7 @@ router.post('/issues/:project', async (request, response) => {
     });
 
     const savedIssue = await newIssue.save();
-    return response.status(201).json(savedIssue);
+    return response.json(savedIssue);
   } catch (err) {
     return response.json({ error: 'required field(s) missing' });
   }

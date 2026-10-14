@@ -19,7 +19,7 @@ describe('Issue Tracker API', function () {
       issue_title: 'Complete API', issue_text: 'Implement every route', created_by: 'Ada',
       assigned_to: 'Grace', status_text: 'In progress'
     });
-    assert.strictEqual(response.status, 201);
+    assert.strictEqual(response.status, 200);
     issue = response.body;
     assert.strictEqual(issue.assigned_to, 'Grace');
     assert.strictEqual(issue.open, true);
