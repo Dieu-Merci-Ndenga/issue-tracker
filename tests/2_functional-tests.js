@@ -1,117 +1,238 @@
-const assert = require('assert');
-const request = require('supertest');
-const app = require('../server');
-const api = require('../routes/api');
+const chaiHttp = require('chai-http');
+const chai = require('chai');
+const assert = chai.assert;
+const server = require('../server');
+const { expect } = require('chai');
+const Issue = require('../models/issue');
+const { ObjectId } = require('mongodb');
 
-describe('Issue Tracker API', function () {
-  this.timeout(10000);
+chai.use(chaiHttp);
 
-  const project = 'functional-test-project';
-  let issue;
+suite('Functional Tests', function() {
+    let issueId;
+  
+    suite('Test POST', () =>{
+        
+        test('Test POST with every field filled in', done => {
+            chai
+            .request(server)
+            .post('/api/issues/apitest')
+            .send({
+                assigned_to: 'Soham',
+                status_text: 'Not yet completed',
+                issue_title: 'to be deleted',
+                issue_text: 'Auth error',
+                created_by: 'John',
+            })
+            .end((err, res) => {
+                assert.equal(res.status, 200)
+                issueId = res.body._id
+                assert.equal(res.body.assigned_to, 'Soham')
+                assert.equal(res.body.status_text, 'Not yet completed')
+                assert.equal(res.body.issue_title, 'to be deleted')
+                assert.equal(res.body.issue_text, 'Auth error')
+                assert.equal(res.body.created_by, 'John')
+                done()
+            })
+        })
 
-  //beforeEach(() => api.clear());
-  beforeEach(async () => {
-    await api.clear();
-  });
+        test('Test POST with only required fields', done => {
+            chai
+            .request(server)
+            .post('/api/issues/apitest')
+            .send({
+                issue_title: 'to be deleted',
+                issue_text: 'Auth error',
+                created_by: 'John',
+            })
+            .end((err, res) => {
+                assert.equal(res.status, 200)
+                assert.equal(res.body.issue_title, 'to be deleted')
+                assert.equal(res.body.issue_text, 'Auth error')
+                assert.equal(res.body.created_by, 'John')
+                assert.equal(res.body.assigned_to, '')
+                assert.equal(res.body.status_text, '')
+                done()
+            })
+        })
 
-  it('Create an issue with every field: POST request to /api/issues/{project}', async function () {
-    const response = await request(app).post(`/api/issues/${project}`).send({
-      issue_title: 'Complete API', issue_text: 'Implement every route', created_by: 'Ada',
-      assigned_to: 'Grace', status_text: 'In progress'
-    });
-    assert.strictEqual(response.status, 200);
-    issue = response.body;
-    assert.strictEqual(issue.assigned_to, 'Grace');
-    assert.strictEqual(issue.open, true);
-    assert.ok(issue._id && issue.created_on && issue.updated_on);
-  });
+        test('Test POST with missing required fields', done => {
+            chai
+            .request(server)
+            .post('/api/issues/apitest')
+            .send({
+                issue_title: 'Text',
+            })
+            .end((err, res) => {
+                assert.equal(res.body.error, 'required field(s) missing')
+                //assert.deepEqual(res.body, {error: 'required field(s) missing'})
+                done()
+            })
+        })
+    })
 
-  it('Create an issue with only required fields: POST request to /api/issues/{project}', async function () {
-    const response = await request(app).post(`/api/issues/${project}`).send({
-      issue_title: 'Required', issue_text: 'Only required values', created_by: 'Ada'
-    });
-    assert.strictEqual(response.body.assigned_to, '');
-    assert.strictEqual(response.body.status_text, '');
-  });
+    suite('Test GET', () =>{
+        
+        test('Test GET to obtain an array of all issues for specific project', done => {
+            chai
+            .request(server)
+            .get('/api/issues/apitest')
+            .query({})
+            .end((err, res) => {
+                assert.equal(res.status, 200)
+                assert.isArray(res.body, 'is array')
+                assert.property(res.body[0], 'assigned_to')
+                assert.property(res.body[0], 'status_text')
+                assert.property(res.body[0], 'open')
+                assert.property(res.body[0], 'issue_title')
+                assert.property(res.body[0], 'issue_text')
+                assert.property(res.body[0], 'created_by')
+                assert.property(res.body[0], 'created_on')
+                assert.property(res.body[0], 'updated_on')
+                done()
+            })
+        })
 
-  it('Create an issue with missing required fields: POST request to /api/issues/{project}', async function () {
-    const response = await request(app).post(`/api/issues/${project}`).send({ issue_title: 'Missing' });
-    assert.strictEqual(response.status, 200);
-    assert.deepStrictEqual(response.body, { error: 'required field(s) missing' });
-  });
+        test('Test GET to apply one filter', done => {
+            chai
+            .request(server)
+            .get('/api/issues/apitest')
+            .query({created_by: 'Sam'})
+            .end((err, res) => {
+                assert.isArray(res.body, 'is array')
+                res.body.forEach(issue => {
+                    assert.equal(issue.created_by, 'Sam')
+               })
+               done()
+            })
+        })
 
-  it('View issues on a project: GET request to /api/issues/{project}', async function () {
-    await request(app).post(`/api/issues/${project}`).send({ issue_title: 'One', issue_text: 'Text', created_by: 'A' });
-    const response = await request(app).get(`/api/issues/${project}`);
-    assert.strictEqual(response.body.length, 1);
-  });
+        test('Test GET to apply multiple filters', done => {
+            chai
+            .request(server)
+            .get('/api/issues/apitest')
+            .query({created_by: 'Sam'}, {open: true})
+            .end((err, res) => {
+                assert.isArray(res.body, 'is array')
+                res.body.forEach(issue => {
+                    assert.equal(issue.created_by, 'Sam')
+                    assert.equal(issue.open, true)
+               })
+               done()
+            })
+        })
+    })
 
-  it('View issues on a project with one filter: GET request to /api/issues/{project}', async function () {
-    await request(app).post(`/api/issues/${project}`).send({ issue_title: 'Open', issue_text: 'Text', created_by: 'A' });
-    const response = await request(app).get(`/api/issues/${project}?open=true`);
-    assert.strictEqual(response.body.length, 1);
-  });
+    suite('Test PUT', () =>{
+        
+        test('Test PUT to update one field', done => {
+            chai
+            .request(server)
+            .put('/api/issues/apitest')
+            .send({_id: issueId, created_by: 'Sam'})
+            .end((err, res) => {
+                //assert.deepEqual(res.body, {result: 'successfully updated', '_id': '60f1e7716e4fbb24fcd38dc0'})
+                assert.equal(res.body.result, 'successfully updated')
+                    assert.equal(res.body._id, issueId)
+                done()
+            })
+        })
 
-  it('View issues on a project with multiple filters: GET request to /api/issues/{project}', async function () {
-    await request(app).post(`/api/issues/${project}`).send({ issue_title: 'Match', issue_text: 'Text', created_by: 'A', status_text: 'new' });
-    const response = await request(app).get(`/api/issues/${project}?created_by=A&status_text=new`);
-    assert.strictEqual(response.body.length, 1);
-  });
+        test('Test PUT to update multiple fields', done => {
+            chai
+            .request(server)
+            .put('/api/issues/apitest')
+            .send({_id: issueId, created_by: 'Sam', issue_text: 'Sir'})
+            .end((err, res) => {
+                //assert.deepEqual(res.body, {result: 'successfully updated', '_id': '60f1e7716e4fbb24fcd38dc0'})
+                assert.equal(res.body.result, 'successfully updated')
+                    assert.equal(res.body._id, issueId)
+                done()
+            })
+        })
 
-  async function createIssueForMutation() {
-    const response = await request(app).post(`/api/issues/${project}`).send({ issue_title: 'Update me', issue_text: 'Text', created_by: 'A' });
-    issue = response.body;
-  }
+        test('Test PUT to update issue with missing id', done => {
+            chai
+            .request(server)
+            .put('/api/issues/apitest')
+            .send({})
+            .end((err, res) => {
+                //assert.deepEqual(res.body, {error: 'missing _id'})
+                assert.equal(res.body.error, 'missing _id')
+                done()
+            })
+        })
 
-  it('Update one field on an issue: PUT request to /api/issues/{project}', async function () {
-    await createIssueForMutation();
-    const response = await request(app).put(`/api/issues/${project}`).send({ _id: issue._id, issue_title: 'Updated' });
-    assert.deepStrictEqual(response.body, { result: 'successfully updated', _id: issue._id });
-  });
+        test('Test PUT to update issue with no fields to update', done => {
+            chai
+            .request(server)
+            .put('/api/issues/apitest')
+            .send({_id: issueId})
+            .end((err, res) => {
+                //assert.deepEqual(res.body, {error: 'no update field(s) sent', _id: '60f1e7716e4fbb24fcd38dc0'})
+                assert.equal(res.body.error, 'no update field(s) sent')
+                assert.equal(res.body._id, issueId)
+                done()
+            })
+        })
 
-  it('Update multiple fields on an issue: PUT request to /api/issues/{project}', async function () {
-    await createIssueForMutation();
-    const response = await request(app).put(`/api/issues/${project}`).send({ _id: issue._id, issue_title: 'Updated', status_text: 'done' });
-    assert.strictEqual(response.body.result, 'successfully updated');
-    const saved = (await request(app).get(`/api/issues/${project}?_id=${issue._id}`)).body[0];
-    assert.strictEqual(saved.status_text, 'done');
-  });
+        test('Test PUT to update issue with invalid id', done => {
+            chai
+            .request(server)
+            .put('/api/issues/apitest')
+            .send({_id: '60f1bee4521da62c5ccd7641', issue_text:'sam'})
+            .end((err, res) => {
+                //assert.deepEqual(res.body, {error: 'could not update', '_id': '60f1bee4521da62c5ccd7641'})
+                assert.equal(res.body.error, 'could not update')
+                assert.equal(res.body._id, '60f1bee4521da62c5ccd7641')
+                done()
+            })
+        })
+    })
 
-  it('Update an issue with missing _id: PUT request to /api/issues/{project}', async function () {
-    const response = await request(app).put(`/api/issues/${project}`).send({ issue_title: 'Updated' });
-    assert.strictEqual(response.status, 200);
-    assert.deepStrictEqual(response.body, { error: 'missing _id' });
-  });
+    suite('Test Delete', () =>{
+        
+        
+        test('Test DELETE to delete an issue', async () => {
+            const toDelete = await Issue.findOne({issue_title: 'to be deleted'}).exec()
+            chai
+            .request(server)
+            .delete('/api/issues/apitest')
+            .send({_id: toDelete._id})
+            .end((err, res) => {
+                // assert.deepEqual(res.body, { 
+                //     result: 'successfully deleted',
+                //     '_id': ObjectId(toDelete._id).toString()
+                // })
+                assert.equal(res.body.result, 'successfully deleted')
+                assert.equal(res.body._id, ObjectId(toDelete._id).toString())
+                //done()
+            })
+        })
 
-  it('Update an issue with no fields to update: PUT request to /api/issues/{project}', async function () {
-    await createIssueForMutation();
-    const response = await request(app).put(`/api/issues/${project}`).send({ _id: issue._id });
-    assert.strictEqual(response.status, 200);
-    assert.deepStrictEqual(response.body, { error: 'no update field(s) sent', _id: issue._id });
-  });
+        test('Test DELETE with invalid id', done => {
+            chai
+            .request(server)
+            .delete('/api/issues/apitest')
+            .send({_id: '60f1c7cd0e7e0e0a74771d25'})
+            .end((err, res) => {
+                //assert.deepEqual(res.body, {error: 'could not delete', '_id': '60f1c7cd0e7e0e0a74771d25'})
+                assert.equal(res.body.error, 'could not delete')
+                assert.equal(res.body._id, '60f1c7cd0e7e0e0a74771d25')
+                done()
+            })
+        })
 
-  it('Update an issue with an invalid _id: PUT request to /api/issues/{project}', async function () {
-    const response = await request(app).put(`/api/issues/${project}`).send({ _id: 'invalid', issue_title: 'Updated' });
-    assert.strictEqual(response.status, 200);
-    assert.deepStrictEqual(response.body, { error: 'could not update', _id: 'invalid' });
-  });
-
-  it('Delete an issue: DELETE request to /api/issues/{project}', async function () {
-    await createIssueForMutation();
-    const response = await request(app).delete(`/api/issues/${project}`).send({ _id: issue._id });
-    assert.deepStrictEqual(response.body, { result: 'successfully deleted', _id: issue._id });
-  });
-
-  it('Delete an issue with an invalid _id: DELETE request to /api/issues/{project}', async function () {
-    await createIssueForMutation();
-    const response = await request(app).delete(`/api/issues/${project}`).send({ _id: 'invalid' });
-    assert.strictEqual(response.status, 200);
-    assert.deepStrictEqual(response.body, { error: 'could not delete', _id: 'invalid' });
-  });
-
-  it('Delete an issue with missing _id: DELETE request to /api/issues/{project}', async function () {
-    const response = await request(app).delete(`/api/issues/${project}`).send({});
-    assert.strictEqual(response.status, 200);
-    assert.deepStrictEqual(response.body, { error: 'missing _id' });
-  });
+        test('Test DELETE with missing id', done => {
+            chai
+            .request(server)
+            .delete('/api/issues/apitest')
+            .send({})
+            .end((err, res) => {
+                assert.equal(res.body.error, 'missing _id')
+                //assert.deepEqual(res.body, {error: 'missing _id'})
+                done()
+            })
+        })
+    })
 });

@@ -1,156 +1,101 @@
-const express = require('express');
-const mongoose = require('mongoose');
+'use strict';
 
-const router = express.Router();
+const mongoose = require('mongoose')
 
-// Définition du schéma Mongoose conforme aux exigences de freeCodeCamp
-const issueSchema = new mongoose.Schema({
-  project: { type: String, required: true },
-  issue_title: { type: String, required: true },
-  issue_text: { type: String, required: true },
-  created_by: { type: String, required: true },
-  assigned_to: { type: String, default: '' },
-  status_text: { type: String, default: '' },
-  open: { type: Boolean, default: true },
-  created_on: { type: Date, default: Date.now },
-  updated_on: { type: Date, default: Date.now }
-});
+module.exports = function (app) {
+  
+  //DB Connection & Schema layout 
+  mongoose.connect(process.env.DB,{useNewUrlParser: true, useCreateIndex: true, useFindAndModify: false, useUnifiedTopology: true})
+  const issueModel = require('../models/issue')
 
-const Issue = mongoose.models.Issue || mongoose.model('Issue', issueSchema);
+  //Routes
+  app.route('/api/issues/:project')
+  
+    .get(function (req, res){
+      let project = req.params.project;
+      
+      let obj = Object.assign(req.query)
+      obj['project'] = project
+      
+      issueModel.find(obj).exec()
+        .then(data => {
+            if(data) {
+              let obj = []
+              data.forEach(data => {
+                obj.push({_id: data._id, assigned_to: data.assigned_to, status_text: data.status_text, issue_title: data.issue_title, issue_text: data.issue_text, created_by: data.created_by, created_on: data.created_on, updated_on: data.updated_on, open: data.open})
+              })
+              return res.json(obj)
+            }
+          })
+        .catch(err => console.log(err))
+    })
+    
+    .post(function (req, res){
+      let project = req.params.project;
 
-router.post('/issues/:project', async (request, response) => {
-  const { issue_title, issue_text, created_by, assigned_to, status_text } = request.body;
-  if (!issue_title || !issue_text || !created_by) {
-    return response.json({ error: 'required field(s) missing' });
-  }
+      let {issue_title, issue_text, created_by, assigned_to, status_text} = req.body
 
-  try {
-    const newIssue = new Issue({
-      project: request.params.project,
-      issue_title,
-      issue_text,
-      created_by,
-      assigned_to: assigned_to || '',
-      status_text: status_text || ''
-    });
+      if(!issue_title || !issue_text || !created_by)
+        return res.json({error: 'required field(s) missing'})
 
-    const savedIssue = await newIssue.save();
-    return response.json(savedIssue);
-  } catch (err) {
-    return response.json({ error: 'required field(s) missing' });
-  }
-});
+      const issue = new issueModel({
+        assigned_to: assigned_to || '',
+        status_text: status_text || '',
+        issue_title: issue_title,
+        issue_text: issue_text,
+        created_by: created_by,
+        created_on: new Date(),
+        updated_on: new Date(),
+        project: project
+      })
 
-router.get('/issues/:project', async (request, response) => {
-  try {
-    const filters = { project: request.params.project, ...request.query };
+      issue.save((err, data) => {
+        if(err) return console.log(err)
+        let obj = {_id: data._id, assigned_to: data.assigned_to, status_text: data.status_text, issue_title: data.issue_title, issue_text: data.issue_text, created_by: data.created_by, created_on: data.created_on, updated_on: data.updated_on, open: data.open}
+        return res.json(obj)
+      })
+    })
+    
+    .put(function (req, res){
+      let project = req.params.project;
+      let obj = Object.assign(req.body)
+      let flag = false
 
-    // Gestion propre des tableaux de paramètres et des booléens
-    if (filters.open !== undefined) {
-      if (Array.isArray(filters.open)) {
-        filters.open = filters.open.map((v) => v === 'true' || v === true);
-      } else {
-        filters.open = filters.open === 'true' || filters.open === true;
+      if(Object.keys(obj).length === 0){
+        flag = true
+        return res.json({error: 'missing _id'})
       }
-    }
-
-    // Sécurité contre les CastError sur un _id invalide passé en query string
-    if (filters._id && !mongoose.Types.ObjectId.isValid(filters._id)) {
-      return response.json([]);
-    }
-
-    const issues = await Issue.find(filters);
-    return response.json(issues);
-  } catch (err) {
-    return response.json([]);
-  }
-});
-
-router.put('/issues/:project', async (request, response) => {
-  const { _id, ...updates } = request.body;
-  if (!_id) return response.json({ error: 'missing _id' });
-
-  // Vérification de la validité de l'ObjectId avant d'interroger MongoDB
-  if (!mongoose.Types.ObjectId.isValid(_id)) {
-    return response.json({ error: 'could not update', _id });
-  }
-
-  const updateFields = Object.keys(updates).filter(
-    (field) => updates[field] !== undefined && updates[field] !== null && field !== '_id'
-  );
-
-  if (updateFields.length === 0) {
-    return response.json({ error: 'no update field(s) sent', _id });
-  }
-
-  const allowedFields = ['issue_title', 'issue_text', 'created_by', 'assigned_to', 'status_text', 'open'];
-  const updateData = {};
-  let validCount = 0;
-
-  updateFields.forEach((field) => {
-    if (allowedFields.includes(field)) {
-      if (field === 'open') {
-        updateData[field] = updates[field] === 'true' || updates[field] === true;
-      } else {
-        updateData[field] = updates[field];
+      else if(Object.keys(obj).length === 1 && obj._id){
+        flag = true
+        return res.json({ error: 'no update field(s) sent', '_id': obj._id })
       }
-      validCount++;
-    }
-  });
+      else if(Object.keys(obj).length >= 2 && obj._id){
+        flag = true
+        obj.updated_on = new Date()
 
-  if (validCount === 0) {
-    return response.json({ error: 'no update field(s) sent', _id });
-  }
-
-  updateData.updated_on = new Date();
-
-  try {
-    const updatedIssue = await Issue.findOneAndUpdate(
-      { _id, project: request.params.project },
-      { $set: updateData },
-      { returnDocument: 'after' }
-    );
-
-    if (!updatedIssue) {
-      return response.json({ error: 'could not update', _id });
-    }
-
-    return response.json({ result: 'successfully updated', _id });
-  } catch (err) {
-    return response.json({ error: 'could not update', _id });
-  }
-});
-
-router.delete('/issues/:project', async (request, response) => {
-  const { _id } = request.body;
-  if (!_id) return response.json({ error: 'missing _id' });
-
-  if (!mongoose.Types.ObjectId.isValid(_id)) {
-    return response.json({ error: 'could not delete', _id });
-  }
-
-  try {
-    const deletedIssue = await Issue.findOneAndDelete({ _id, project: request.params.project });
-    if (!deletedIssue) {
-      return response.json({ error: 'could not delete', _id });
-    }
-    return response.json({ result: 'successfully deleted', _id });
-  } catch (err) {
-    return response.json({ error: 'could not delete', _id });
-  }
-});
-
-router.delete('/issues/:project/all', async (request, response) => {
-  try {
-    await Issue.deleteMany({ project: request.params.project });
-    return response.json({ result: 'successfully cleared' });
-  } catch (err) {
-    return response.json({ error: 'could not clear' });
-  }
-});
-
-module.exports = router;
-// api.clear() devient asynchrone pour garantir le nettoyage avant chaque test
-module.exports.clear = async () => {
-  await Issue.deleteMany({});
+        issueModel.findByIdAndUpdate(obj._id, obj).exec()
+        .then(data => {
+          if(data) return res.json({result: 'successfully updated', '_id': obj._id})
+          else return res.json({error: 'could not update', '_id': obj._id})
+        })
+        .catch(err => console.log(err))
+      }
+      
+      if(!flag) return res.json({error: 'could not update', '_id': obj._id})
+    })
+    
+    .delete(function (req, res){
+      let project = req.params.project;
+      let obj = Object.assign(req.body)
+      //console.log(obj)
+      if(!obj._id) return res.json({ error: 'missing _id'})
+      else{
+        issueModel.findByIdAndDelete(obj._id).exec()
+        .then(data => {
+          if(data) res.json({result: 'successfully deleted', '_id': obj._id})
+          else res.json({ error: 'could not delete', '_id': obj._id })
+        })
+        .catch(err => console.log(err))
+      }
+    });  
 };
