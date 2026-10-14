@@ -1,7 +1,8 @@
 {
-	"name": "fcc-issue-tracker",
+	"name": "issue-tracker-api",
 	"version": "1.0.0",
-	"description": "Issue Tracker Boilerplate",
+	"private": true,
+	"description": "Issue Tracker API built with Express and MongoDB",
 	"main": "server.js",
 	"scripts": {
 		"start": "node server.js",
@@ -20,14 +21,11 @@
 		"mongoose-hidden": "^1.9.1",
 		"nodemon": "^2.0.12"
 	},
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/freeCodeCamp/boilerplate-project-issuetracker"
-	},
 	"keywords": [
-		"node",
-		"hyperdev",
-		"express"
+		"issue-tracker",
+		"mongodb",
+		"express",
+		"api"
 	],
 	"license": "MIT"
 }
