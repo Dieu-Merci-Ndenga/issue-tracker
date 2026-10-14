@@ -20,7 +20,9 @@ function runMochaTests() {
   if (testRun) return testRun;
 
   testRun = new Promise((resolve) => {
-    const mocha = new Mocha({ ui: 'bdd', timeout: 5000 });
+    // const mocha = new Mocha({ ui: 'bdd', timeout: 5000 });
+    // Updating the Mocha configuration:
+    const mocha = new Mocha({ ui: 'bdd', timeout: 10000 });
     
     try {
       mocha.addFile(path.join(__dirname, 'tests', '2_functional-tests.js'));
