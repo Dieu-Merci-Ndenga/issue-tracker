@@ -1,76 +1,80 @@
 const express = require('express');
-const crypto = require('crypto');
+const mongoose = require('mongoose');
 
 const router = express.Router();
-const issues = new Map();
 
-function projectIssues(project) {
-  if (!issues.has(project)) issues.set(project, []);
-  return issues.get(project);
-}
+// Définition du schéma Mongoose conforme aux exigences de freeCodeCamp
+const issueSchema = new mongoose.Schema({
+  project: { type: String, required: true },
+  issue_title: { type: String, required: true },
+  issue_text: { type: String, required: true },
+  created_by: { type: String, required: true },
+  assigned_to: { type: String, default: '' },
+  status_text: { type: String, default: '' },
+  open: { type: Boolean, default: true },
+  created_on: { type: Date, default: Date.now },
+  updated_on: { type: Date, default: Date.now }
+});
 
-function issueId() {
-  return crypto.randomBytes(12).toString('hex');
-}
+const Issue = mongoose.models.Issue || mongoose.model('Issue', issueSchema);
 
-function findIssue(project, id) {
-  return projectIssues(project).find((issue) => issue._id === id);
-}
-
-router.post('/issues/:project', (request, response) => {
-  const { issue_title, issue_text, created_by } = request.body;
+router.post('/issues/:project', async (request, response) => {
+  const { issue_title, issue_text, created_by, assigned_to, status_text } = request.body;
   if (!issue_title || !issue_text || !created_by) {
     return response.json({ error: 'required field(s) missing' });
   }
 
-  const now = new Date().toISOString();
-  const issue = {
-    issue_title,
-    issue_text,
-    created_by,
-    assigned_to: request.body.assigned_to || '',
-    status_text: request.body.status_text || '',
-    created_on: now,
-    updated_on: now,
-    open: true,
-    _id: issueId()
-  };
-
-  projectIssues(request.params.project).push(issue);
-  return response.status(201).json(issue);
-});
-
-router.get('/issues/:project', (request, response) => {
-  const filters = request.query;
-  const projectItems = projectIssues(request.params.project);
-
-  const result = projectItems.filter((issue) => {
-    return Object.entries(filters).every(([field, value]) => {
-      if (!(field in issue)) return false;
-
-      // 1. Guard against array query parameters (e.g., ?status_text=open&status_text=closed)
-      if (Array.isArray(value)) {
-        return value.includes(String(issue[field]));
-      }
-
-      // 2. Strict boolean coercion for the 'open' field
-      if (field === 'open') {
-        const boolVal = value === 'true' || value === true;
-        return issue[field] === boolVal;
-      }
-
-      return String(issue[field]) === String(value);
+  try {
+    const newIssue = new Issue({
+      project: request.params.project,
+      issue_title,
+      issue_text,
+      created_by,
+      assigned_to: assigned_to || '',
+      status_text: status_text || ''
     });
-  });
 
-  return response.json(result);
+    const savedIssue = await newIssue.save();
+    return response.status(201).json(savedIssue);
+  } catch (err) {
+    return response.json({ error: 'required field(s) missing' });
+  }
 });
 
-router.put('/issues/:project', (request, response) => {
+router.get('/issues/:project', async (request, response) => {
+  try {
+    const filters = { project: request.params.project, ...request.query };
+
+    // Gestion propre des tableaux de paramètres et des booléens
+    if (filters.open !== undefined) {
+      if (Array.isArray(filters.open)) {
+        filters.open = filters.open.map((v) => v === 'true' || v === true);
+      } else {
+        filters.open = filters.open === 'true' || filters.open === true;
+      }
+    }
+
+    // Sécurité contre les CastError sur un _id invalide passé en query string
+    if (filters._id && !mongoose.Types.ObjectId.isValid(filters._id)) {
+      return response.json([]);
+    }
+
+    const issues = await Issue.find(filters);
+    return response.json(issues);
+  } catch (err) {
+    return response.json([]);
+  }
+});
+
+router.put('/issues/:project', async (request, response) => {
   const { _id, ...updates } = request.body;
   if (!_id) return response.json({ error: 'missing _id' });
 
-  // Filter out undefined/null payload values
+  // Vérification de la validité de l'ObjectId avant d'interroger MongoDB
+  if (!mongoose.Types.ObjectId.isValid(_id)) {
+    return response.json({ error: 'could not update', _id });
+  }
+
   const updateFields = Object.keys(updates).filter(
     (field) => updates[field] !== undefined && updates[field] !== null && field !== '_id'
   );
@@ -79,48 +83,74 @@ router.put('/issues/:project', (request, response) => {
     return response.json({ error: 'no update field(s) sent', _id });
   }
 
-  const issue = findIssue(request.params.project, _id);
-  if (!issue) return response.json({ error: 'could not update', _id });
-
-  // 3. Explicit whitelist of mutable fields to prevent prototype pollution or invalid overwrites
   const allowedFields = ['issue_title', 'issue_text', 'created_by', 'assigned_to', 'status_text', 'open'];
-  let updatedCount = 0;
+  const updateData = {};
+  let validCount = 0;
 
   updateFields.forEach((field) => {
     if (allowedFields.includes(field)) {
       if (field === 'open') {
-        issue[field] = updates[field] === 'true' || updates[field] === true;
+        updateData[field] = updates[field] === 'true' || updates[field] === true;
       } else {
-        issue[field] = updates[field];
+        updateData[field] = updates[field];
       }
-      updatedCount++;
+      validCount++;
     }
   });
 
-  if (updatedCount === 0) {
+  if (validCount === 0) {
     return response.json({ error: 'no update field(s) sent', _id });
   }
 
-  issue.updated_on = new Date().toISOString();
-  return response.json({ result: 'successfully updated', _id });
+  updateData.updated_on = new Date();
+
+  try {
+    const updatedIssue = await Issue.findOneAndUpdate(
+      { _id, project: request.params.project },
+      { $set: updateData },
+      { new: true }
+    );
+
+    if (!updatedIssue) {
+      return response.json({ error: 'could not update', _id });
+    }
+
+    return response.json({ result: 'successfully updated', _id });
+  } catch (err) {
+    return response.json({ error: 'could not update', _id });
+  }
 });
 
-router.delete('/issues/:project', (request, response) => {
+router.delete('/issues/:project', async (request, response) => {
   const { _id } = request.body;
   if (!_id) return response.json({ error: 'missing _id' });
 
-  const project = projectIssues(request.params.project);
-  const index = project.findIndex((issue) => issue._id === _id);
-  if (index === -1) return response.json({ error: 'could not delete', _id });
+  if (!mongoose.Types.ObjectId.isValid(_id)) {
+    return response.json({ error: 'could not delete', _id });
+  }
 
-  project.splice(index, 1);
-  return response.json({ result: 'successfully deleted', _id });
+  try {
+    const deletedIssue = await Issue.findOneAndDelete({ _id, project: request.params.project });
+    if (!deletedIssue) {
+      return response.json({ error: 'could not delete', _id });
+    }
+    return response.json({ result: 'successfully deleted', _id });
+  } catch (err) {
+    return response.json({ error: 'could not delete', _id });
+  }
 });
 
-router.delete('/issues/:project/all', (request, response) => {
-  issues.delete(request.params.project);
-  return response.json({ result: 'successfully cleared' });
+router.delete('/issues/:project/all', async (request, response) => {
+  try {
+    await Issue.deleteMany({ project: request.params.project });
+    return response.json({ result: 'successfully cleared' });
+  } catch (err) {
+    return response.json({ error: 'could not clear' });
+  }
 });
 
 module.exports = router;
-module.exports.clear = () => issues.clear();
+// api.clear() devient asynchrone pour garantir le nettoyage avant chaque test
+module.exports.clear = async () => {
+  await Issue.deleteMany({});
+};

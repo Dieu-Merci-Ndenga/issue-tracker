@@ -7,7 +7,10 @@ describe('Issue Tracker API', function () {
   const project = 'functional-test-project';
   let issue;
 
-  beforeEach(() => api.clear());
+  //beforeEach(() => api.clear());
+  beforeEach(async () => {
+    await api.clear();
+  });
 
   it('Create an issue with every field: POST request to /api/issues/{project}', async function () {
     const response = await request(app).post(`/api/issues/${project}`).send({

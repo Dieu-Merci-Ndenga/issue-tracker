@@ -1,10 +1,20 @@
+require('dotenv').config();
+
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
 const Mocha = require('mocha');
 const apiRouter = require('./routes/api');
+const mongoose = require('mongoose');
 
 const app = express();
+
+// Connexion à MongoDB si la variable d'environnement DB est définie
+if (process.env.DB) {
+  mongoose.connect(process.env.DB)
+    .then(() => console.log('Connected to MongoDB'))
+    .catch((err) => console.error('MongoDB connection error:', err));
+}
 
 // 1. Enable CORS globally
 app.use(cors({ optionsSuccessStatus: 200 }));
